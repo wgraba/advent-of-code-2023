@@ -14,6 +14,18 @@ struct Args {
 fn main() {
     let cli_args = Args::parse();
 
+    let words_to_digits = vec![
+            ("one", "o1e"),
+            ("two", "t2o"),
+            ("three", "t3e"),
+            ("four", "f4r"),
+            ("five", "f5e"),
+            ("six", "s6x"),
+            ("seven", "s7n"),
+            ("eight", "e8t"),
+            ("nine", "n9e"),
+        ];
+
     let file_input = File::open(cli_args.input.as_str())
         .expect(format!("Could not open file {}", cli_args.input).as_str());
     let file_reader = BufReader::new(file_input);
@@ -26,55 +38,12 @@ fn main() {
         let input = line.clone();
         line = line.to_ascii_lowercase();
 
-        let words_to_digits = vec![
-            ("one", '1'),
-            ("two", '2'),
-            ("three", '3'),
-            ("four", '4'),
-            ("five", '5'),
-            ("six", '6'),
-            ("seven", '7'),
-            ("eight", '8'),
-            ("nine", '9'),
-        ];
-
         // Find first and last digits
-        let mut digits: Vec<char> = Vec::new();
-        while !line.is_empty() {
-            if let Some(c) = line.chars().next() {
-                let digit: Option<char> = if c.is_ascii_digit() {
-                    // Found ASCII digit -> remove from input and return
-                    line = line.strip_prefix(c).unwrap().to_string();
-                    Some(c)
-                } else {
-                    // Look for digits as words
-                    let mut words = (&words_to_digits).into_iter();
-                    loop {
-                        if let Some((word, digit)) = words.next() {
-                            if let Some(new_line) = line.strip_prefix(word) {
-                                // Found digit as word -> remove from input and return with
-                                // last char of word prepended in case it is needed for next
-                                // word
-                                line = if let Some(c) = word.chars().last() {
-                                    format!("{c}{new_line}")
-                                } else {
-                                    new_line.to_string()
-                                };
-                                break Some(*digit);
-                            }
-                        } else {
-                            // No digits as words found -> remove first char
-                            line.drain(..1);
-                            break None;
-                        }
-                    }
-                };
-
-                if let Some(d) = digit {
-                    digits.push(d);
-                }
-            }
+        for (word, digit) in &words_to_digits {
+            line = line.replace(word, digit);
         }
+
+        let digits: Vec<u32> = line.chars().filter_map(|c| c.to_digit(10)).collect();
 
         let first_digit = digits.first();
         let last_digit = digits.last();
