@@ -1,21 +1,76 @@
 use clap::Parser;
+use regex::Regex;
 use std::{
+    collections::HashSet,
     fs::File,
     io::{BufRead, BufReader},
 };
 
-struct Round {
-    num_red: u32,
-    num_green: u32,
-    num_blue: u32,
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+struct Point {
+    x: i32,
+    y: i32,
 }
 
-struct Game {
-    _id: u32,
-    rounds: Vec<Round>,
+#[derive(Clone, PartialEq, Eq, Hash)]
+struct SchematicItem {
+    origin: Point,
+    num_str: String,
 }
 
-/// Simple program to greet a person
+impl SchematicItem {
+    fn is_part_number(&self) -> bool {
+        self.num_str.chars().all(|c| c.is_ascii_digit())
+    }
+
+    fn gen_neighbors(&self) -> HashSet<Point> {
+        let mut neighbors: HashSet<Point> = HashSet::new();
+        let item_points: Vec<Point> = (0..self.num_str.len())
+            .map(|n| Point {
+                x: self.origin.x + n as i32,
+                y: self.origin.y,
+            })
+            .collect();
+
+        for point in item_points {
+            neighbors.insert(Point {
+                x: point.x - 1,
+                y: point.y - 1,
+            });
+            neighbors.insert(Point {
+                x: point.x - 1,
+                y: point.y + 0,
+            });
+            neighbors.insert(Point {
+                x: point.x - 1,
+                y: point.y + 1,
+            });
+            neighbors.insert(Point {
+                x: point.x + 0,
+                y: point.y - 1,
+            });
+            neighbors.insert(Point {
+                x: point.x + 0,
+                y: point.y + 1,
+            });
+            neighbors.insert(Point {
+                x: point.x + 1,
+                y: point.y - 1,
+            });
+            neighbors.insert(Point {
+                x: point.x + 1,
+                y: point.y + 0,
+            });
+            neighbors.insert(Point {
+                x: point.x + 1,
+                y: point.y + 1,
+            });
+        }
+        neighbors
+    }
+}
+
+/// Advent of Code - Day 3a
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
@@ -29,66 +84,63 @@ fn main() {
         .expect(format!("Could not open file {}", cli_args.input).as_str());
     let file_reader = BufReader::new(file_input);
 
-    let mut file_lines = file_reader.lines();
+    let file_lines = file_reader.lines();
 
-    let mut total_game_powers: u32 = 0;
-    while let Some(Ok(line)) = file_lines.next() {
-        let game = parse_game_input(&line);
-        let max_possible_round = game.rounds.into_iter().reduce(|acc, r| Round {
-            num_red: std::cmp::max(acc.num_red, r.num_red),
-            num_green: std::cmp::max(acc.num_green, r.num_green),
-            num_blue: std::cmp::max(acc.num_blue, r.num_blue),
-        });
+    let mut part_numbers: Vec<SchematicItem> = Vec::new();
+    let mut symbols: HashSet<Point> = HashSet::new();
+    for (n, line) in file_lines.enumerate() {
+        if let Ok(line) = line {
+            let items = parse_input(&line, n.try_into().unwrap());
 
-        let power = if let Some(round) = max_possible_round {
-            round.num_blue * round.num_green * round.num_red
-        } else {
-            0
-        };
-        total_game_powers += power;
+            for symbol in items.iter().filter(|item| !item.is_part_number()) {
+                symbols.insert(symbol.origin);
+            }
+
+            for part_number in items.iter().filter(|item| item.is_part_number()) {
+                part_numbers.push(part_number.to_owned());
+            }
+        }
     }
 
-    println!("Total Game Powers: {total_game_powers}");
+    let total_part_numbers: u32 = part_numbers
+        .iter()
+        .map(|p| {
+            if p.gen_neighbors()
+                .iter()
+                .any(|point| symbols.contains(point))
+            {
+                p.num_str.parse().unwrap()
+            } else {
+                0
+            }
+        })
+        .sum();
+    println!("Total Part Number: {total_part_numbers}");
 }
 
-fn parse_game_input(input: &str) -> Game {
-    let game_id: u32 = input
-        .split_once(":")
-        .unwrap()
-        .0
-        .split_once(" ")
-        .unwrap()
-        .1
-        .parse()
-        .expect("Game ID is not a number");
-    let rounds_str = input.split_once(":").unwrap().1.split(";");
+fn parse_input(line: &str, n_line: i32) -> Vec<SchematicItem> {
+    let part_num_re = Regex::new(r"([0-9]+)").unwrap();
+    let sym_re = Regex::new(r"([^0-9\.])").unwrap();
 
-    let mut num_red: u32 = 0;
-    let mut num_blue: u32 = 0;
-    let mut num_green: u32 = 0;
-    let mut rounds: Vec<Round> = Vec::new();
-    for round in rounds_str {
-        let balls = round.split(",");
-        for ball in balls {
-            let (num_balls_str, ball_color) = ball.trim().split_once(" ").unwrap();
-            let num_balls: u32 = num_balls_str
-                .parse()
-                .expect(&format!("Game {game_id}: unable to parse number of balls."));
-            match ball_color {
-                "red" => num_red = num_balls,
-                "blue" => num_blue = num_balls,
-                "green" => num_green = num_balls,
-                _ => panic!("Unknown ball color '{ball_color}'"),
-            };
-        }
-        rounds.push(Round {
-            num_red: num_red,
-            num_blue: num_blue,
-            num_green: num_green,
-        });
+    let mut items: Vec<SchematicItem> = Vec::new();
+    for m in part_num_re.find_iter(line) {
+        items.push(SchematicItem {
+            origin: Point {
+                x: m.start() as i32,
+                y: n_line,
+            },
+            num_str: m.as_str().to_string(),
+        })
     }
-    Game {
-        _id: game_id,
-        rounds: rounds,
+    for m in sym_re.find_iter(line) {
+        items.push(SchematicItem {
+            origin: Point {
+                x: m.start() as i32,
+                y: n_line,
+            },
+            num_str: m.as_str().to_string(),
+        })
     }
+
+    items
 }
